@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<title>タスク管理</title>
+
+<!-- ======================================================
+  ★ STEP 1: ここにSupabaseの設定を入力してください
+  Supabaseのプロジェクトページ → Project Settings → API から取得
+  ====================================================== -->
+<script>
+  const SUPABASE_URL     = "https://supabase.com/dashboard/project/ufuovymsoqepyjbzgqef";       // 例: https://xxxxxx.supabase.co
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmdW92eW1zb3FlcHlqYnpncWVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NDM1MTMsImV4cCI6MjA5NDMxOTUxM30.lvsDC5qe345_KpQbG4Hulk6MsrFfQHUQK3TVnmIL-f0"; // 例: eyJhbGci...
+  const TABLE_NAME       = "tasks";                   // 後述のSQL通りなら変更不要
+</script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f5f4f0;--bg3:#eeece8;
+  --text:#1a1a1a;--text2:#6b6a66;--text3:#a09f9b;
+  --border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);
+  --radius:8px;--radius-lg:12px;--shadow:0 1px 4px rgba(0,0,0,0.08);--accent:#378ADD;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;--text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;--border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.22);}
+}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif;background:var(--bg3);color:var(--text);min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
+.container{max-width:680px;margin:0 auto;padding:1.25rem 1rem}
+@media(max-width:480px){.container{padding:.75rem}}
+
+/* sync bar */
+#sync-bar{display:flex;align-items:center;gap:6px;font-size:12px;padding:.5rem .875rem;border-radius:var(--radius);margin-bottom:1rem;transition:all .3s}
+#sync-bar.ok{background:#E1F5EE;color:#0F6E56}
+#sync-bar.err{background:#FCEBEB;color:#A32D2D}
+#sync-bar.loading{background:#FAEEDA;color:#854F0B}
+#sync-bar.warn{background:#FFF8E6;color:#854F0B;border:1px solid #EF9F2733}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ok .sync-dot{background:#1D9E75}
+.err .sync-dot{background:#E24B4A}
+.loading .sync-dot{background:#EF9F27;animation:pulse 1s infinite}
+.warn .sync-dot{background:#EF9F27}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* header */
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.5rem}
+.header h1{font-size:22px;font-weight:600;color:var(--text)}
+.header-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ver-badge{background:var(--bg2);padding:2px 8px;border-radius:100px;border:1px solid var(--border);font-size:11px;color:var(--text3)}
+.sync-btn{font-size:12px;padding:4px 10px;border-radius:100px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);cursor:pointer;transition:background .15s}
+.sync-btn:hover{background:var(--bg3)}
+
+/* card / form */
+.card{background:var(--bg);border-radius:var(--radius-lg);border:1px solid var(--border);padding:1rem 1.25rem;margin-bottom:1rem;box-shadow:var(--shadow)}
+.add-row{display:flex;gap:7px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.add-row:last-child{margin-bottom:0}
+.add-row input[type=text]{flex:2;min-width:140px;font-size:14px;height:36px;border:1px solid var(--border2);border-radius:var(--radius);padding:0 12px;background:var(--bg2);color:var(--text);outline:none}
+.add-row input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
+.add-row select,.add-row input[type=date],.add-row input[type=time]{height:36px;font-size:13px;border:1px solid var(--border2);border-radius:var(--radius);padding:0 8px;background:var(--bg2);color:var(--text);outline:none;-webkit-appearance:none;appearance:none}
+.add-row select{padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.add-row label{font-size:13px;color:var(--text2);white-space:nowrap;display:flex;align-items:center;gap:6px;cursor:pointer}
+.add-row input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent)}
+.repeat-opts{display:none;align-items:center;gap:7px;flex-wrap:wrap;padding-top:4px}
+.repeat-opts.show{display:flex}
+.btn{height:36px;padding:0 18px;font-size:13px;font-weight:500;border:1px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);cursor:pointer;white-space:nowrap;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.btn:hover,.btn:active{background:var(--bg2)}
+@media(max-width:480px){.add-row input[type=text]{min-width:0;width:100%;flex:none}.add-row select{flex:1}}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem}
+.stat{background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);padding:.65rem .5rem;text-align:center}
+.stat-num{font-size:20px;font-weight:600;color:var(--text)}
+.stat-label{font-size:11px;color:var(--text3);margin-top:1px}
+
+/* filters */
+.filter-block{background:var(--bg);border-radius:var(--radius-lg);border:1px solid var(--border);padding:.875rem 1rem;margin-bottom:.875rem;box-shadow:var(--shadow)}
+.fl{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.05em;margin-bottom:6px}
+.filter-row{display:flex;gap:5px;flex-wrap:wrap}
+.fbtn{font-size:12px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:100px;background:transparent;color:var(--text2);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.fbtn.active{background:var(--bg3);border-color:var(--border2);color:var(--text);font-weight:600}
+.gdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* task list */
+.section-title{font-size:12px;font-weight:600;color:var(--text2);margin:1rem 0 .5rem}
+.task-list{display:flex;flex-direction:column;gap:6px;margin-bottom:.5rem}
+.task-item{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:.7rem .875rem;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow);transition:border-color .15s}
+.task-item:hover{border-color:var(--border2)}
+.task-item.done{opacity:.48}
+.task-item.done .task-title{text-decoration:line-through;color:var(--text2)}
+.gbar{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;min-height:36px}
+.check-btn{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;color:transparent;font-size:12px;-webkit-tap-highlight-color:transparent}
+.done .check-btn{background:#639922;border-color:#639922;color:#fff}
+.task-body{flex:1;min-width:0}
+.task-title{font-size:14px;color:var(--text);word-break:break-all}
+.task-meta{display:flex;gap:4px;margin-top:4px;align-items:center;flex-wrap:wrap}
+.badge{font-size:11px;padding:2px 7px;border-radius:100px;font-weight:500;white-space:nowrap}
+.p-high{background:#FCEBEB;color:#A32D2D}.p-medium{background:#FAEEDA;color:#854F0B}.p-low{background:#EAF3DE;color:#3B6D11}
+.cost-light{background:#E6F1FB;color:#185FA5}.cost-medium{background:#F1EFE8;color:#5F5E5A}.cost-heavy{background:#EEEDFE;color:#534AB7}
+.rbadge{background:#E1F5EE;color:#0F6E56;font-size:10px;padding:2px 6px;border-radius:100px;display:inline-flex;align-items:center;gap:2px}
+.due-lbl{font-size:11px;color:var(--text3)}.due-lbl.ov{color:#E24B4A}
+.task-actions{display:flex;gap:3px;flex-shrink:0}
+@media(hover:hover){.task-actions{opacity:0;transition:opacity .15s}.task-item:hover .task-actions{opacity:1}}
+.act-btn{width:30px;height:30px;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:16px;-webkit-tap-highlight-color:transparent}
+.act-btn:hover,.act-btn:active{background:var(--bg2);color:var(--text)}
+.act-btn.del:hover,.act-btn.del:active{color:#E24B4A}
+.empty{text-align:center;padding:3rem 0;color:var(--text3);font-size:14px}
+.empty-icon{font-size:36px;display:block;margin-bottom:.5rem}
+.edit-input{font-size:14px;flex:1;border:1px solid var(--accent);border-radius:var(--radius);padding:4px 10px;background:var(--bg);color:var(--text);outline:none;height:30px;min-width:0}
+
+/* dialog */
+#dialog-wrap{display:none;background:rgba(0,0,0,0.42);border-radius:var(--radius-lg);padding:1.5rem 1rem;margin-bottom:1rem}
+#dialog-wrap.show{display:block}
+.dialog-box{background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem 1.25rem 1.25rem;max-width:460px;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,0.15)}
+.dlg-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px}
+.dlg-sub{font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.5}
+.choice-btn{display:flex;align-items:flex-start;gap:10px;padding:.75rem 1rem;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg);cursor:pointer;text-align:left;transition:border-color .15s,background .15s;width:100%;margin-bottom:8px;-webkit-tap-highlight-color:transparent}
+.choice-btn:hover,.choice-btn:active{border-color:var(--border2);background:var(--bg2)}
+.choice-icon{width:30px;height:30px;border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;margin-top:1px}
+.choice-label{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.choice-desc{font-size:12px;color:var(--text2);line-height:1.4}
+.custom-area{display:none;border-top:1px solid var(--border);padding-top:1rem;margin-top:.25rem}
+.custom-area>label{font-size:12px;color:var(--text2);display:block;margin-bottom:6px}
+.custom-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.custom-row input{height:34px;font-size:13px;border:1px solid var(--border2);border-radius:var(--radius);padding:0 8px;background:var(--bg2);color:var(--text);outline:none}
+.custom-ok{height:34px;padding:0 14px;font-size:13px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);cursor:pointer}
+.dlg-cancel{font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;padding:6px 0;display:flex;align-items:center;gap:4px;margin-top:.25rem}
+.dlg-cancel:hover{color:var(--text2)}
+.version-tag{text-align:center;font-size:11px;color:var(--text3);padding:.5rem 0 1rem}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>📋 タスク管理</h1>
+    <div class="header-right">
+      <span id="today-date" style="font-size:12px;color:var(--text3)"></span>
+      <span class="ver-badge" id="ver-badge">v1.1.0</span>
+      <button class="sync-btn" onclick="syncFromCloud()">↻ 同期</button>
+    </div>
+  </div>
+
+  <div id="sync-bar" class="warn">
+    <span class="sync-dot"></span>
+    <span id="sync-msg">初期化中...</span>
+  </div>
+
+  <!-- ダイアログ -->
+  <div id="dialog-wrap">
+    <div class="dialog-box">
+      <div class="dlg-title" id="dlg-title"></div>
+      <div class="dlg-sub"   id="dlg-sub"></div>
+      <div id="dlg-choices"></div>
+      <div class="custom-area" id="custom-area">
+        <label>来週の期限日時を指定</label>
+        <div class="custom-row">
+          <input type="date" id="custom-due">
+          <input type="time" id="custom-time" value="23:59">
+          <button class="custom-ok" onclick="applyCustom()">確定</button>
+        </div>
+      </div>
+      <button class="dlg-cancel" onclick="cancelDialog()">↩ キャンセル（完了を取り消す）</button>
+    </div>
+  </div>
+
+  <!-- 追加フォーム -->
+  <div class="card">
+    <div class="add-row">
+      <input type="text" id="new-task" placeholder="新しいタスクを入力...">
+      <select id="new-genre">
+        <option>課題</option><option>趣味</option><option>就活</option>
+        <option>サークル</option><option>交友</option><option>家事</option>
+        <option>アルバイト</option><option>その他</option>
+      </select>
+    </div>
+    <div class="add-row">
+      <select id="new-priority">
+        <option value="medium">優先度：普通</option>
+        <option value="high">優先度：高</option>
+        <option value="low">優先度：低</option>
+      </select>
+      <select id="new-cost">
+        <option value="medium">コスト：普通</option>
+        <option value="light">コスト：軽い</option>
+        <option value="heavy">コスト：重い</option>
+      </select>
+      <label><input type="checkbox" id="repeat-chk" onchange="toggleRepeatForm(this.checked)"> 週次リピート</label>
+    </div>
+    <div class="repeat-opts" id="repeat-opts">
+      <select id="repeat-day">
+        <option value="0">毎週 日曜</option><option value="1">毎週 月曜</option>
+        <option value="2">毎週 火曜</option><option value="3">毎週 水曜</option>
+        <option value="4">毎週 木曜</option><option value="5">毎週 金曜</option>
+        <option value="6">毎週 土曜</option>
+      </select>
+      <input type="time" id="repeat-time" value="23:59">
+      <span style="font-size:12px;color:var(--text2)">に期限</span>
+    </div>
+    <div class="add-row" id="due-row" style="margin-top:4px">
+      <input type="date" id="new-due">
+      <input type="time" id="new-time" value="23:59">
+      <button class="btn" id="add-btn">＋ 追加</button>
+    </div>
+    <div class="add-row" id="rep-add-row" style="display:none;margin-top:4px">
+      <button class="btn" id="add-btn-rep">＋ 追加</button>
+    </div>
+  </div>
+
+  <!-- 統計 -->
+  <div class="stats">
+    <div class="stat"><div class="stat-num" id="s-all">0</div><div class="stat-label">すべて</div></div>
+    <div class="stat"><div class="stat-num" id="s-todo">0</div><div class="stat-label">未完了</div></div>
+    <div class="stat"><div class="stat-num" id="s-done">0</div><div class="stat-label">完了</div></div>
+    <div class="stat"><div class="stat-num" id="s-over">0</div><div class="stat-label" style="color:#E24B4A">期限超過</div></div>
+  </div>
+
+  <!-- フィルター -->
+  <div class="filter-block">
+    <div class="fl">ジャンル</div>
+    <div class="filter-row" id="genre-filters"></div>
+  </div>
+  <div class="filter-block">
+    <div class="fl">ステータス・優先度・コスト</div>
+    <div class="filter-row">
+      <button class="fbtn active" data-sf="all">すべて</button>
+      <button class="fbtn" data-sf="todo">未完了</button>
+      <button class="fbtn" data-sf="done">完了</button>
+      <button class="fbtn" data-sf="high">優先度：高</button>
+      <button class="fbtn" data-sf="heavy">コスト：重い</button>
+      <button class="fbtn" data-sf="overdue">期限超過</button>
+      <button class="fbtn" data-sf="repeat">週次リピート</button>
+    </div>
+  </div>
+
+  <div id="task-container"></div>
+  <div class="version-tag" id="version-tag"></div>
+</div>
+
+<script>
+// ================================================================
+// VERSION — アップデート時にここを更新
+// ================================================================
+const APP_VERSION = "1.1.0";
+
+// ================================================================
+// SUPABASE HELPERS
+// ================================================================
+const isReady = () =>
+  SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY";
+
+async function sbFetch(path, opts = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": opts.prefer || "",
+      ...opts.headers,
+    },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ================================================================
+// SYNC STATUS
+// ================================================================
+function setSS(state, msg) {
+  const b = document.getElementById("sync-bar");
+  b.className = state;
+  document.getElementById("sync-msg").textContent = msg;
+}
+
+// ================================================================
+// CLOUD OPS
+// ================================================================
+async function syncFromCloud() {
+  if (!isReady()) { setSS("warn","⚠️ Supabase未設定 — ローカル保存モード"); return; }
+  setSS("loading","クラウドと同期中...");
+  try {
+    const data = await sbFetch(`${TABLE_NAME}?order=created_at.asc`);
+    tasks = data.map(dbToLocal);
+    saveLocal(); render(); buildGF();
+    setSS("ok",`✓ 同期完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+  } catch(e) { setSS("err",`✗ 同期失敗: ${e.message}`); }
+}
+
+async function cloudInsert(t) {
+  if (!isReady()) return;
+  try { await sbFetch(TABLE_NAME,{method:"POST",prefer:"return=minimal",body:JSON.stringify(localToDb(t))}); }
+  catch(e) { setSS("err",`✗ 保存失敗: ${e.message}`); }
+}
+
+async function cloudUpdate(t) {
+  if (!isReady()) return;
+  try { await sbFetch(`${TABLE_NAME}?id=eq.${t.id}`,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify(localToDb(t))}); }
+  catch(e) { setSS("err",`✗ 更新失敗: ${e.message}`); }
+}
+
+async function cloudDelete(id) {
+  if (!isReady()) return;
+  try { await sbFetch(`${TABLE_NAME}?id=eq.${id}`,{method:"DELETE"}); }
+  catch(e) { setSS("err",`✗ 削除失敗: ${e.message}`); }
+}
+
+// ================================================================
+// DATA MAPPING
+// ================================================================
+const localToDb = t => ({
+  id: t.id, title: t.title, genre: t.genre, priority: t.priority, cost: t.cost,
+  due: t.due||null, time: t.time||null, done: t.done, repeat: t.repeat,
+  repeat_day: t.repeatDay??null, repeat_time: t.repeatTime||null,
+});
+
+const dbToLocal = r => ({
+  id: r.id, title: r.title, genre: r.genre, priority: r.priority, cost: r.cost,
+  due: r.due||"", time: r.time||"", done: r.done, repeat: r.repeat,
+  repeatDay: r.repeat_day??undefined, repeatTime: r.repeat_time||"",
+});
+
+// ================================================================
+// LOCAL STORAGE
+// ================================================================
+const LOCAL_KEY = "taskapp-v2";
+const saveLocal = () => { try{localStorage.setItem(LOCAL_KEY,JSON.stringify(tasks));}catch(e){} };
+const loadLocal = () => { try{const r=localStorage.getItem(LOCAL_KEY);if(r)tasks=JSON.parse(r);}catch(e){} };
+
+// ================================================================
+// CONSTANTS
+// ================================================================
+const GC = {
+  '課題':{dot:'#378ADD',bar:'#378ADD',bg:'#E6F1FB',tx:'#185FA5'},
+  '趣味':{dot:'#D4537E',bar:'#D4537E',bg:'#FBEAF0',tx:'#993556'},
+  '就活':{dot:'#7F77DD',bar:'#7F77DD',bg:'#EEEDFE',tx:'#534AB7'},
+  'サークル':{dot:'#1D9E75',bar:'#1D9E75',bg:'#E1F5EE',tx:'#0F6E56'},
+  '交友':{dot:'#EF9F27',bar:'#EF9F27',bg:'#FAEEDA',tx:'#854F0B'},
+  '家事':{dot:'#D85A30',bar:'#D85A30',bg:'#FAECE7',tx:'#993C1D'},
+  'アルバイト':{dot:'#E24B4A',bar:'#E24B4A',bg:'#FCEBEB',tx:'#A32D2D'},
+  'その他':{dot:'#888780',bar:'#888780',bg:'#F1EFE8',tx:'#5F5E5A'},
+};
+const GENRES = Object.keys(GC);
+const DAYS = ['日','月','火','水','木','金','土'];
+const PL = {high:'優先度：高',medium:'優先度：普通',low:'優先度：低'};
+const CL = {light:'軽い',medium:'普通',heavy:'重い'};
+
+let tasks=[], gf='all', sf='all', editId=null, pendingId=null;
+
+// ================================================================
+// DATE UTILS
+// ================================================================
+const today = () => new Date().toISOString().split('T')[0];
+const isOv  = t => !t.done && t.due && t.due < today();
+const fmtD  = (due,time) => { if(!due)return''; const[,m,d]=due.split('-'); return time?`${m}/${d} ${time}`:`${m}/${d}`; };
+const nthWD = (dow,n=1)  => {
+  const d=new Date(); let diff=dow-d.getDay(); if(diff<=0)diff+=7; diff+=(n-1)*7;
+  d.setDate(d.getDate()+diff); return d.toISOString().split('T')[0];
+};
+const newId = () => typeof crypto!=='undefined'&&crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+
+// ================================================================
+// FORM
+// ================================================================
+function toggleRepeatForm(on) {
+  document.getElementById('repeat-opts').classList.toggle('show',on);
+  document.getElementById('due-row').style.display    = on?'none':'flex';
+  document.getElementById('rep-add-row').style.display = on?'flex':'none';
+}
+
+async function addTask() {
+  const inp=document.getElementById('new-task'), title=inp.value.trim();
+  if(!title)return;
+  const isRep=document.getElementById('repeat-chk').checked;
+  const rd=parseInt(document.getElementById('repeat-day').value);
+  const rt=document.getElementById('repeat-time').value;
+  const t={id:newId(),title,done:false,repeat:isRep,
+    genre:document.getElementById('new-genre').value,
+    priority:document.getElementById('new-priority').value,
+    cost:document.getElementById('new-cost').value};
+  if(isRep){t.repeatDay=rd;t.repeatTime=rt;t.due=nthWD(rd,1);t.time=rt;}
+  else{t.due=document.getElementById('new-due').value;t.time=document.getElementById('new-time').value;}
+  tasks.push(t); inp.value='';
+  document.getElementById('repeat-chk').checked=false; toggleRepeatForm(false);
+  saveLocal();render();buildGF();
+  await cloudInsert(t);
+  setSS("ok",`✓ 保存完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+}
+
+// ================================================================
+// DIALOG
+// ================================================================
+function openDialog(id){
+  const t=tasks.find(x=>x.id===id); if(!t)return;
+  pendingId=id;
+  const nd=nthWD(t.repeatDay,1), nnd=nthWD(t.repeatDay,2);
+  document.getElementById('dlg-title').textContent=`「${t.title}」を完了`;
+  document.getElementById('dlg-sub').textContent=`週次リピートタスクです。来週（${fmtD(nd,t.repeatTime)}）の扱いを選んでください。`;
+  document.getElementById('custom-area').style.display='none';
+  document.getElementById('custom-due').value=nd;
+  document.getElementById('custom-time').value=t.repeatTime||'23:59';
+  const choices=[
+    {icon:'🔁',bg:'#E1F5EE',col:'#0F6E56',label:'来週も通常通り追加',desc:`${fmtD(nd,t.repeatTime)} に同じタスクを追加`,fn:async()=>{await spawnNext(t);commit();}},
+    {icon:'🚫',bg:'#FAEEDA',col:'#854F0B',label:'来週だけスキップ',desc:`来週はなし。再来週（${fmtD(nnd,t.repeatTime)}）から再開`,fn:async()=>{await spawnNext(t,null,null,2);commit();}},
+    {icon:'🕐',bg:'#EEEDFE',col:'#534AB7',label:'来週だけ期限を変更',desc:'来週のみ別の日時。再来週以降は通常に戻る',fn:()=>{document.getElementById('custom-area').style.display='block';}},
+    {icon:'⏹',bg:'#FCEBEB',col:'#A32D2D',label:'リピートを終了',desc:'今後このタスクは繰り返さない',fn:()=>{commit();}},
+  ];
+  document.getElementById('dlg-choices').innerHTML=choices.map((c,i)=>`
+    <button class="choice-btn" id="ch${i}">
+      <span class="choice-icon" style="background:${c.bg};color:${c.col}">${c.icon}</span>
+      <span><div class="choice-label">${c.label}</div><div class="choice-desc">${c.desc}</div></span>
+    </button>`).join('');
+  choices.forEach((c,i)=>document.getElementById('ch'+i).addEventListener('click',c.fn));
+  const dw=document.getElementById('dialog-wrap');
+  dw.classList.add('show');
+  dw.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function spawnNext(t,due,time,weeks=1){
+  const nt={id:newId(),title:t.title,genre:t.genre,priority:t.priority,cost:t.cost,
+    due:due||nthWD(t.repeatDay,weeks),
+    time:time!==undefined?time:(t.repeatTime||''),
+    done:false,repeat:true,repeatDay:t.repeatDay,repeatTime:t.repeatTime};
+  tasks.push(nt);
+  await cloudInsert(nt);
+}
+
+function commit(){
+  pendingId=null;
+  document.getElementById('dialog-wrap').classList.remove('show');
+  saveLocal();render();buildGF();
+  setSS("ok",`✓ 保存完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+}
+
+async function applyCustom(){
+  const t=tasks.find(x=>x.id===pendingId); if(!t)return;
+  await spawnNext(t,document.getElementById('custom-due').value,document.getElementById('custom-time').value);
+  await spawnNext(t,null,null,2);
+  commit();
+}
+
+function cancelDialog(){
+  const t=tasks.find(x=>x.id===pendingId);
+  if(t){t.done=false;cloudUpdate(t);}
+  pendingId=null;
+  document.getElementById('dialog-wrap').classList.remove('show');
+  saveLocal();render();buildGF();
+}
+
+// ================================================================
+// TASK ACTIONS
+// ================================================================
+async function toggle(id){
+  const t=tasks.find(x=>x.id===id); if(!t)return;
+  if(!t.done){
+    t.done=true; saveLocal();render();buildGF();
+    await cloudUpdate(t);
+    if(t.repeat){openDialog(id);return;}
+  }else{
+    t.done=false;
+    await cloudUpdate(t);
+  }
+  saveLocal();render();buildGF();
+  setSS("ok",`✓ 更新完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+}
+
+async function del(id){
+  if(!confirm('このタスクを削除しますか？'))return;
+  tasks=tasks.filter(x=>x.id!==id);
+  saveLocal();render();buildGF();
+  await cloudDelete(id);
+  setSS("ok",`✓ 削除完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+}
+
+function startEdit(id){editId=id;render();const e=document.getElementById('edit-inp');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}}
+async function saveEdit(id){
+  const e=document.getElementById('edit-inp');
+  if(e&&e.value.trim()){const t=tasks.find(x=>x.id===id);if(t){t.title=e.value.trim();await cloudUpdate(t);}}
+  editId=null;saveLocal();render();
+  setSS("ok",`✓ 更新完了 — ${new Date().toLocaleTimeString("ja-JP")}`);
+}
+function cancelEdit(){editId=null;render();}
+
+// ================================================================
+// GENRE FILTERS
+// ================================================================
+function buildGF(){
+  const el=document.getElementById('genre-filters');
+  el.innerHTML=[
+    `<button class="fbtn${gf==='all'?' active':''}" data-gf="all"><span class="gdot" style="background:#888780"></span>すべて</button>`,
+    ...GENRES.map(g=>{const c=GC[g],cnt=tasks.filter(t=>t.genre===g&&!t.done).length;
+      return`<button class="fbtn${gf===g?' active':''}" data-gf="${g}"><span class="gdot" style="background:${c.dot}"></span>${g}${cnt?` <span style="font-size:10px;color:var(--text3)">${cnt}</span>`:''}</button>`;
+    })
+  ].join('');
+  el.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>{gf=b.dataset.gf;buildGF();render();}));
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+function tHTML(t){
+  const c=GC[t.genre]||GC['その他'],ov=isOv(t),ds=fmtD(t.due,t.time);
+  const rb=t.repeat?`<span class="rbadge">🔁 ${DAYS[t.repeatDay]}曜</span>`:'';
+  const sid=`'${t.id}'`;
+  if(editId===t.id)return`<div class="task-item"><div class="gbar" style="background:${c.bar}"></div><button class="check-btn" onclick="toggle(${sid})">${t.done?'✓':''}</button><input class="edit-input" id="edit-inp" value="${t.title.replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter')saveEdit(${sid});if(event.key==='Escape')cancelEdit()"><div class="task-actions" style="opacity:1"><button class="act-btn" onclick="saveEdit(${sid})">✓</button><button class="act-btn" onclick="cancelEdit()">✕</button></div></div>`;
+  return`<div class="task-item${t.done?' done':''}"><div class="gbar" style="background:${c.bar}"></div><button class="check-btn" onclick="toggle(${sid})">${t.done?'✓':''}</button><div class="task-body"><div class="task-title">${t.title}</div><div class="task-meta"><span class="badge" style="background:${c.bg};color:${c.tx}">${t.genre}</span><span class="badge p-${t.priority}">${PL[t.priority]}</span><span class="badge cost-${t.cost}">コスト：${CL[t.cost]}</span>${rb}${ds?`<span class="due-lbl${ov?' ov':''}">📅 ${ds}${ov?' (期限超過)':''}</span>`:''}</div></div><div class="task-actions"><button class="act-btn" onclick="startEdit(${sid})">✏️</button><button class="act-btn del" onclick="del(${sid})">🗑️</button></div></div>`;
+}
+
+function render(){
+  const fl=tasks.filter(t=>{
+    const g=gf==='all'||t.genre===gf; let s=true;
+    if(sf==='todo')s=!t.done; else if(sf==='done')s=t.done;
+    else if(sf==='high')s=t.priority==='high'&&!t.done;
+    else if(sf==='heavy')s=t.cost==='heavy'&&!t.done;
+    else if(sf==='overdue')s=isOv(t); else if(sf==='repeat')s=t.repeat&&!t.done;
+    return g&&s;
+  });
+  document.getElementById('s-all').textContent =tasks.length;
+  document.getElementById('s-todo').textContent=tasks.filter(t=>!t.done).length;
+  document.getElementById('s-done').textContent=tasks.filter(t=>t.done).length;
+  document.getElementById('s-over').textContent=tasks.filter(isOv).length;
+  const c=document.getElementById('task-container');
+  if(!fl.length){c.innerHTML='<div class="empty"><span class="empty-icon">📋</span>タスクがありません</div>';return;}
+  const todo=fl.filter(t=>!t.done),done=fl.filter(t=>t.done);
+  c.innerHTML=(todo.length?`<div class="task-list">${todo.map(tHTML).join('')}</div>`:'')+
+    (done.length?`<div class="section-title">完了済み (${done.length})</div><div class="task-list">${done.map(tHTML).join('')}</div>`:'');
+}
+
+// ================================================================
+// INIT
+// ================================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('add-btn').addEventListener('click',addTask);
+  document.getElementById('add-btn-rep').addEventListener('click',addTask);
+  document.getElementById('new-task').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
+  document.querySelectorAll('[data-sf]').forEach(b=>{
+    b.addEventListener('click',()=>{sf=b.dataset.sf;document.querySelectorAll('[data-sf]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render();});
+  });
+  const d=new Date();
+  document.getElementById('today-date').textContent=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  document.getElementById('ver-badge').textContent=`v${APP_VERSION}`;
+  document.getElementById('version-tag').textContent=`v${APP_VERSION} — タスク管理アプリ`;
+
+  loadLocal(); buildGF(); render();
+
+  if(isReady()){
+    setSS("loading","クラウドと同期中...");
+    await syncFromCloud();
+  } else {
+    setSS("warn","⚠️ Supabase未設定 — ローカル保存モードで動作中");
+  }
+});
+</script>
+</body>
+</html>
