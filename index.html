@@ -245,7 +245,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','No
 // ================================================================
 // VERSION — アップデート時にここを更新
 // ================================================================
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 
 // ================================================================
 // SUPABASE HELPERS
@@ -537,7 +537,7 @@ function render(){
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('add-btn').addEventListener('click',addTask);
   document.getElementById('add-btn-rep').addEventListener('click',addTask);
-  document.getElementById('new-task').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
+  document.getElementById('new-task').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)addTask();});
   document.querySelectorAll('[data-sf]').forEach(b=>{
     b.addEventListener('click',()=>{sf=b.dataset.sf;document.querySelectorAll('[data-sf]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render();});
   });
